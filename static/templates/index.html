@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Sistema de Cubagem - Jacuzzi</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f4f7fb;
+      color: #2c3e50;
+    }
+    header {
+      background: #004080;
+      padding: 15px 30px;
+      display: flex;
+      align-items: center;
+      color: white;
+    }
+    header img {
+      height: 50px;
+      margin-right: 20px;
+    }
+    header h1 {
+      font-size: 24px;
+      margin: 0;
+    }
+    main {
+      max-width: 1000px;
+      margin: 20px auto;
+      padding: 25px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+    }
+    h2 {
+      margin-top: 25px;
+      border-bottom: 2px solid #eee;
+      padding-bottom: 5px;
+      color: #004080;
+    }
+    input {
+      padding: 10px;
+      width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-size: 15px;
+    }
+    button {
+      background: #004080;
+      color: white;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-size: 15px;
+      transition: 0.2s;
+    }
+    button:hover {
+      background: #0066cc;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li.produto {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px;
+      margin: 5px 0;
+      background: #fafafa;
+    }
+    li.produto button {
+      background: #27ae60;
+      font-size: 13px;
+      padding: 5px 10px;
+    }
+    li.produto button:hover {
+      background: #2ecc71;
+    }
+    #resultado {
+      background: #f9fbff;
+      border: 1px solid #dce6f5;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    table th, table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+      font-size: 13px;
+    }
+    table th {
+      background: #004080;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="https://i.postimg.cc/VLwvF6FG/jacuzzi-logo.png" alt="Jacuzzi Logo">
+    <h1>Sistema de Cubagem</h1>
+  </header>
+  <main>
+    <input type="text" id="busca" placeholder="Buscar por código ou nome...">
+    <ul id="resultados"></ul>
+
+    <h2>Itens Selecionados</h2>
+    <ul id="selecionados"></ul>
+    <button onclick="calcularCubagem()">Calcular Cubagem</button>
+    <button onclick="exportarPDF()">Exportar PDF</button>
+
+    <h2>Resultado</h2>
+    <div id="resultado"></div>
+  </main>
+
+  <!-- jsPDF para exportar PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+    const resultadosEl = document.getElementById("resultados");
+    const selecionadosEl = document.getElementById("selecionados");
+    const selecionados = [];
+    let ultimoResultado = null;
+
+    document.getElementById("busca").addEventListener("input", async (e) => {
+      const q = e.target.value;
+      if (!q) { resultadosEl.innerHTML = ""; return; }
+      const res = await fetch(`/buscar?q=${q}`);
+      const data = await res.json();
+      resultadosEl.innerHTML = "";
+      data.forEach(prod => {
+        const li = document.createElement("li");
+        li.className = "produto";
+        li.innerHTML = `
+          <span>${prod.Codigo} - ${prod.Nome} (${prod.m3_total.toFixed(3)} m³, ${prod.Peso.toFixed(2)} kg)</span>
+          <button onclick="adicionar('${prod.Codigo}')">Adicionar</button>`;
+        resultadosEl.appendChild(li);
+      });
+    });
+
+    function adicionar(codigo) {
+      if (!selecionados.includes(codigo)) {
+        selecionados.push(codigo);
+        const li = document.createElement("li");
+        li.innerText = codigo;
+        selecionadosEl.appendChild(li);
+      }
+    }
+
+    async function calcularCubagem() {
+      const res = await fetch("/cubagem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itens: selecionados })
+      });
+      const data = await res.json();
+      ultimoResultado = data;
+
+      // Monta tabela de itens detalhados
+      let tabela = `
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nome</th>
+              <th>Comprimento (cm)</th>
+              <th>Largura (cm)</th>
+              <th>Altura (cm)</th>
+              <th>Volume (m³)</th>
+              <th>Peso (kg)</th>
+            </tr>
+          </thead>
+          <tbody>`;
+      data.itens.forEach(item => {
+        tabela += `<tr>
+          <td>${item.Codigo}</td>
+          <td>${item.Nome}</td>
+          <td>${item.Comprimento}</td>
+          <td>${item.Largura}</td>
+          <td>${item.Altura}</td>
+          <td>${item.m3_total.toFixed(3)}</td>
+          <td>${item.Peso.toFixed(2)}</td>
+        </tr>`;
+      });
+      tabela += `</tbody></table>`;
+
+      document.getElementById("resultado").innerHTML = `
+        <p><strong>Total Volume:</strong> ${data.volume_total.toFixed(3)} m³</p>
+        <p><strong>Total Peso:</strong> ${data.peso_total.toFixed(2)} kg</p>
+        <p><strong>Caixas possíveis:</strong></p>
+        <ul>${data.caixas.map(c => `<li>${c.nome} - ${c.capacidade} m³</li>`).join("")}</ul>
+        <h3>Itens Selecionados</h3>
+        ${tabela}
+      `;
+    }
+
+    async function exportarPDF() {
+  if (!ultimoResultado) { alert("Calcule a cubagem antes de exportar."); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+  const margemEsquerda = 10;
+  const larguraPagina = 190; // A4 largura total - margem
+  let y = 10;
+
+  const img = new Image();
+  img.src = "https://i.postimg.cc/VLwvF6FG/jacuzzi-logo.png";
+  img.onload = function() {
+    // Cabeçalho
+    doc.addImage(img, "PNG", margemEsquerda, y, 50, 20);
+    doc.setFontSize(18);
+    doc.text("Relatório de Cubagem", 70, y + 10);
+    y += 30;
+
+    doc.setFontSize(12);
+    doc.text(`Total Volume: ${ultimoResultado.volume_total.toFixed(3)} m³`, margemEsquerda, y);
+    y += 7;
+    doc.text(`Total Peso: ${ultimoResultado.peso_total.toFixed(2)} kg`, margemEsquerda, y);
+    y += 10;
+
+    doc.text("Caixas possíveis:", margemEsquerda, y);
+    y += 7;
+    ultimoResultado.caixas.forEach((c) => {
+      doc.text(`- ${c.nome} (${c.capacidade} m³)`, margemEsquerda + 5, y);
+      y += 7;
+    });
+
+    y += 5;
+    doc.setFontSize(14);
+    doc.text("Itens Selecionados:", margemEsquerda, y);
+    y += 7;
+
+    doc.setFontSize(11);
+    ultimoResultado.itens.forEach((item) => {
+      const linha = `${item.Codigo} - ${item.Nome} | C:${item.Comprimento} x L:${item.Largura} x A:${item.Altura} cm | V:${item.m3_total.toFixed(3)} m³ | P:${item.Peso.toFixed(2)} kg`;
+      const linhasQuebradas = doc.splitTextToSize(linha, larguraPagina);
+      linhasQuebradas.forEach((texto) => {
+        if (y > 280) {  // cria nova página
+          doc.addPage();
+          y = 20;
+        }
+        doc.text(texto, margemEsquerda, y);
+        y += 6;
+      });
+    });
+
+    doc.save("relatorio_cubagem.pdf");
+  };
+}
+  </script>
+</body>
+</html>
